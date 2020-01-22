@@ -19,6 +19,7 @@ class Universe:
 
         self.gm_matrix = torch.tensor([[planet.G_mass] for planet in planets])
         self.positions = torch.stack([planet.position for planet in planets])
+        # self.pos_matrix = self.positions.expand(self.num_planets, self.num_planets, self.num_dims)
         self.velocities = torch.stack([planet.velocity for planet in planets])
 
         # Some integrators expect to have an existing accelerations matrix
@@ -36,7 +37,6 @@ class Universe:
 
         pos_matrix = positions.expand(self.num_planets, self.num_planets, self.num_dims)
 
-        # dist_matrix = self.inf_diagonal + pos_matrix - pos_matrix.transpose(0, 1)
         dist_matrix = pos_matrix - pos_matrix.transpose(0, 1)
 
         # thought: it could end up being more accurate to avoid reducing
@@ -44,9 +44,19 @@ class Universe:
         # due to each individual interaction
 
         dist_magnitude = dist_matrix.norm(dim=2, keepdim=True) + self.inf_diagonal
-        dist_direction = dist_matrix / dist_magnitude
+        # dist_direction = dist_matrix / dist_magnitude
+        dist_matrix /= dist_magnitude
 
-        acceleration_components = self.gm_matrix / (dist_magnitude * dist_magnitude) * dist_direction
+        # denom = 1 / dist_magnitude
+        # denom *= denom
+
+        # acceleration_components = self.gm_matrix / (dist_magnitude * dist_magnitude) * dist_direction
+        # acceleration_components = self.gm_matrix * denom * dist_matrix
+
+        acceleration_components = self.gm_matrix / (dist_magnitude * dist_magnitude) * dist_matrix
+
+        # acceleration_components = self.gm_matrix
+
         accelerations = acceleration_components.sum(dim=1)
 
         return accelerations
@@ -61,7 +71,6 @@ class Universe:
         accelerations = []
         for planet_idx, planet in enumerate(self.planets):
             acceleration = torch.zeros(self.num_dims, dtype=planet.dtype)
-            cur_accel = 0
             for other_idx, other in enumerate(self.planets):
                 if planet_idx != other_idx:
                     acceleration += planet.calc_accel(other)

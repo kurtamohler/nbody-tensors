@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 import torch
 import timeit
-import pygame
 import time
 from body import Body
 from universe import Universe
+import math
 
-# torch.set_num_threads(1)
+torch.no_grad()
+torch.set_num_threads(1)
+# torch.set_default_tensor_type('torch.cuda.FloatTensor')
+
 
 #https://www.mathworks.com/content/dam/mathworks/mathworks-dot-com/moler/exm/chapters/orbits.pdf
 
-# Using NASA Horizons data on A.D. 2020-Jan-17 00:00:00.0000 TDB
+# Using NASA Horizons data on day 2458865.500000000 A.D. 2020-Jan-17 00:00:00.0000 TDB
 sun = Body(
     'Sun',
     [0,0,0],
     [0,0,0],
+    # 132712440041.93938,
     132712440041.93938,
     (255, 255, 0)
 )
@@ -31,7 +35,11 @@ jupiter = Body(
     'Jupiter',
     [9.645852849809307E+07,-7.751822294647597E+08,1.061595873793304E+06],
     [1.281982873892912E+01,2.230656764808971E+00,-2.962161287606510E-01],
+
     126686534.911,
+
+    # mars does crazy shit if you do this:
+    # 126686534.911*10000,
     (255, 128, 0)
 )
 
@@ -75,50 +83,82 @@ saturn = Body(
     (200, 200, 100)
 )
 
+G = 6.67408e-11/1e9
+
+spaceship = Body(
+    'spaceship',
+    [-6.460466571450332E+07+200_000,1.322145017754471E+08,-6.309428925409913E+03],
+    [-2.725423398965551E+01,-1.317899134460998E+01+4e-1+2e-2,8.656734598035953E-04],
+    10*G,
+    (255, 0, 255)
+)
+
 
 planets = [
     sun,
-    mercury,
-    venus,
     moon,
     earth,
+    mercury,
+    venus,
     mars,
     jupiter,
     saturn,
-
 ]
+
+for i in range(100):
+    planets.append(Body(
+        'random_planet',
+        torch.rand(3),
+        torch.rand(3),
+        torch.rand(1),
+        (255,255,155)
+    ))
 
 universe = Universe(planets)
 
 
-calc_method_diff = (universe.calc_accelerations() - universe.calc_accelerations_no_matrix()).norm()
 
-if calc_method_diff >= 1e-12:
-    print("Error: either matrix or naive acceleration method is wrong")
-    exit(1)
+# calc_method_diff = (universe.calc_accelerations() - universe.calc_accelerations_no_matrix()).norm()
+
+# if calc_method_diff >= 1e-12:
+#     print("Error: either matrix or naive acceleration method is wrong")
+#     exit(1)
 
 
 def compare_acceleration_calc_performance(universe):
     times = []
 
-    for calc_method in ['universe.calc_accelerations()', 'universe.calc_accelerations_no_matrix()']:
-        num_iters = 1000
-        time_per_iter = torch.mean(torch.tensor(timeit.repeat(
-            calc_method,
-            'from __main__ import universe',
-            repeat = 3,
-            number=num_iters
-        )[1:])) / num_iters
+    for calc_method in [universe.calc_accelerations, universe.calc_accelerations_no_matrix]:
+    # for calc_method in ['universe.calc_accelerations()']:
+        warmup_iters = 10000
+        timed_iters = 20000
+
+        for i in range(warmup_iters):
+            calc_method()
+
+        start_time = time.time()
+        for i in range(timed_iters):
+            calc_method()
+        total_time = time.time() - start_time
+
+        time_per_iter = total_time / timed_iters
 
         times.append(time_per_iter)
 
         print(calc_method)
-        print('time per iter: %f s' % time_per_iter)
+        print('time per iter: %e s' % time_per_iter)
         print('iters per second: %f fps' % (1/time_per_iter))
         print()
 
 
     print('speedup: %f' % (times[1] / times[0]))
+
+print(universe.calc_accelerations())
+
+compare_acceleration_calc_performance(universe)
+
+# exit()
+import pygame
 
 def measure_forward_back_offset(universe):
     init_positions = universe.positions.clone().detach()
@@ -150,7 +190,11 @@ screen = pygame.display.set_mode((screen_width, screen_height))
 planet_disp_paths_surface = pygame.Surface((screen_width, screen_height))
 planet_disp_paths_array = pygame.PixelArray(planet_disp_paths_surface)
 
-time_step = 86400/10
+# time_step = 86400/100
+# time_step = 86400/(101 + 0.01 + 0.001)
+# time_step = 86400/(101 + 0.01 + 0.001) # + 0.001)
+# time_step = 8640/2
+time_step = 512
 
 def translate(value, leftMin, leftMax, rightMin, rightMax):
     # Figure out how wide each range is
@@ -165,7 +209,7 @@ def translate(value, leftMin, leftMax, rightMin, rightMax):
 
 
 steps_per_second = float('inf')
-# steps_per_second = 40
+# steps_per_second = 100
 seconds_per_step = 1.0/steps_per_second
 last_step_time = -seconds_per_step
 
@@ -174,33 +218,83 @@ spf = 1.0 / fps_target
 last_draw_time = -spf
 
 disp_radius = 1.5e9
+# disp_radius = .5e6
+# disp_radius = .3e6
 
 # Keep the center on a specific planet
-center_pos = universe.positions[0]
+center_pos = universe.positions[2]
 
 iterations = 0
 
-while True:
+time_accumulated = 0
+
+
+total_sim_time_seconds =  (2458865.5 - 2422340.5) * 24 * 60 * 60
+
+total_sim_steps = int(total_sim_time_seconds / time_step)
+
+# 2422340.500000000 = A.D. 1920-Jan-17 00:00:00.0000 TDB
+expected_positions = torch.tensor([
+    # sun
+    [0.000000000000000E+00, 0.000000000000000E+00, 0.000000000000000E+00],
+
+    # moon
+    [-6.626849562695473E+07, 1.310922227163226E+08, 3.256617483337969E+04],
+
+    # earth
+    [-6.613033666313083E+07, 1.314732964370219E+08, 2.271202175004780E+04],
+
+    # mercury
+    [-1.533175836729829E+07,-6.798573108924401E+07, -4.136194215143695E+06],
+
+    # venus
+    [-1.048231527374212E+08, -2.473914604257485E+07, 5.724416127873755E+06],
+
+    # mars
+    [-2.436889511232330E+08, 4.847655732679014E+07, 7.045020416478494E+06],
+
+    # jupiter
+    [-5.407427542990354E+08, 5.822943817195526E+08, 9.759206708556920E+06],
+
+    # saturn
+    [-1.289002461574291E+09, 5.231024067539215E+08, 4.192350378270259E+07]
+])
+
+
+while iterations < total_sim_steps:
+# while True:
     cur_time = time.time()
 
     # universe.step_verlet_leapfrog(time_step)
     if (cur_time - last_step_time) > seconds_per_step:
-        universe.step_verlet(time_step)
+        universe.step_verlet(-time_step)
+
+        # accelerate the spaceship toward its velocity direction for each step
+        # universe.velocities[-1] += (0.0000001 * time_step)* torch.tensor([1,1,0])
+        # # universe.planets[-1].color = (int(255*math.sin(time_accumulated)+127), 255, 0)
+        # universe.planets[-1].color = (
+        #     int(127*math.sin(time_accumulated/10000000)+128),
+        #     int(127*math.sin(time_accumulated/10000000 + 2*0.333*3.14159)+128),
+        #     int(127*math.sin(time_accumulated/10000000 + 2*0.666*3.14159)+128)
+        # )
+        # time_accumulated += time_step
+
         last_step_time = cur_time
         iterations += 1
 
 
-        if iterations % 10 == 0:
-            # Draw orbit paths
-            for planet_idx in range(universe.num_planets):
-                x = universe.positions[planet_idx][0] - center_pos[0]
-                y = universe.positions[planet_idx][1] - center_pos[1]
+        if iterations % 100 == 0:
+            if True:
+                # Draw orbit paths
+                for planet_idx in range(universe.num_planets):
+                    x = universe.positions[planet_idx][0] - center_pos[0]
+                    y = universe.positions[planet_idx][1] - center_pos[1]
 
-                x_disp = int(round(translate(x, -disp_radius, disp_radius, 0, screen_height)))
-                y_disp = int(round(translate(y, -disp_radius, disp_radius, 0, screen_height)))
+                    x_disp = int(round(translate(x, -disp_radius, disp_radius, 0, screen_height)))
+                    y_disp = int(round(translate(y, -disp_radius, disp_radius, 0, screen_height)))
 
-                if x_disp >= 0 and x_disp < screen_width and y_disp >= 0 and y_disp < screen_height:
-                    planet_disp_paths_array[x_disp, y_disp] = planets[planet_idx].color
+                    if x_disp >= 0 and x_disp < screen_width and y_disp >= 0 and y_disp < screen_height:
+                        planet_disp_paths_array[x_disp, y_disp] = universe.planets[planet_idx].color
 
     # Update display
     if (cur_time - last_draw_time) > spf:
@@ -213,12 +307,23 @@ while True:
             x_disp = int(round(translate(x, -disp_radius, disp_radius, 0, screen_height)))
             y_disp = int(round(translate(y, -disp_radius, disp_radius, 0, screen_height)))
 
-            pygame.draw.circle(screen, planets[planet_idx].color, (x_disp, y_disp), 3)
+            if x_disp >= 0 and x_disp < screen_width and y_disp >= 0 and y_disp < screen_height:
+                pygame.draw.circle(screen, planets[planet_idx].color, (x_disp, y_disp), 3)
 
         pygame.display.flip()
         last_draw_time = cur_time
 
-    time.sleep(min(seconds_per_step, spf))
+    # time.sleep(min(seconds_per_step, spf))
 
+# add the sun's position to expected values
+# expected_positions += universe.positions[0]
 
-pygame.quit()
+universe.positions -= universe.positions[0].clone()
+# print(universe.positions)
+# print(expected_positions)
+
+# print((universe.positions - expected_positions).norm(dim=1))
+# print((universe.positions - expected_positions) / expected_positions)
+print(100*(universe.positions - expected_positions).norm(dim=1) / expected_positions.norm(dim=1))
+
+# pygame.quit()
