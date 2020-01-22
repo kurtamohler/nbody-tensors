@@ -9,10 +9,8 @@ torch.set_num_threads(1)
 
 dtype = torch.float64
 
-class AccelCalculator(nn.Module):
+class AccelCalculator:
     def __init__(self, planets, dtype=torch.float64):
-        super(AccelCalculator, self).__init__()
-
         self.planets = copy.deepcopy(planets)
         self.positions = torch.stack([planet.position for planet in planets])
         self.gm_matrix = torch.tensor([[planet.G_mass] for planet in planets], dtype=dtype)
@@ -28,13 +26,16 @@ class AccelCalculator(nn.Module):
         for i in range(len(planets)):
             self.inf_diagonal[i][i][0] = float('inf')
 
-    def forward(self):
+    def __call__(self):
         pos_matrix = self.positions.expand(self.num_planets, self.num_planets, 3)
 
         dist_matrix = pos_matrix - pos_matrix.transpose(0, 1)
 
-        # dist_magnitude = dist_matrix.norm(p='fro', dim=2, keepdim=True) + inf_diagonal
         dist_magnitude = (dist_matrix*dist_matrix).sum(dim=2, keepdim=True).sqrt() + self.inf_diagonal
+
+        # Calculating magnitudes with the above line is much faster than the builtin norm() method
+        # dist_magnitude = dist_matrix.norm(p='fro', dim=2, keepdim=True) + self.inf_diagonal
+
         dist_matrix /= dist_magnitude
 
         acceleration_components = self.gm_matrix / (dist_magnitude * dist_magnitude) * dist_matrix
