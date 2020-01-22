@@ -115,16 +115,26 @@ public:
     }
 
     std::vector<Vector3> calc_accelerations() {
-        for (size_t planet_ind = 0; planet_ind < planets_.size(); planet_ind++) {
-            Body& planet = planets_[planet_ind];
+        size_t planet_ind = 0;
+        for (auto planet_iter = planets_.begin(); planet_iter != planets_.end(); planet_iter++) {
+            Body& planet = *planet_iter;
             Vector3& planet_accel = accelerations_[planet_ind];
-            planet_accel = Vector3(0, 0, 0);
 
-            for (size_t other_ind = 0; other_ind < planets_.size(); other_ind++) {
+            planet_accel.x = 0;
+            planet_accel.y = 0;
+            planet_accel.z = 0;
+
+            size_t other_ind = 0;
+            for (auto other_iter = planets_.begin(); other_iter != planets_.end(); other_iter++) {
                 if (planet_ind != other_ind) {
-                    planet_accel += planet.calc_accel(planets_[other_ind]);
+                    Body& other = *other_iter;
+                    planet_accel += planet.calc_accel(other);
                 }
+
+                other_ind++;
             }
+
+            planet_ind++;
         }
 
         return accelerations_;
