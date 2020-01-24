@@ -7,7 +7,7 @@ from universe import Universe
 import math
 
 torch.no_grad()
-torch.set_num_threads(1)
+# torch.set_num_threads(1)
 # torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 

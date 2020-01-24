@@ -254,7 +254,7 @@ int main() {
     }
     std::cout << std::endl;
 
-    for (int i = 0; i < 100; i++) {
+    for (int i = 0; i < 1000; i++) {
         planets.push_back(Body(
             "random_planet",
             Vector3(randDouble(), randDouble(), randDouble()),
@@ -269,8 +269,8 @@ int main() {
     // Measure performance of Universe::calc_accelerations()
     Timer timer;
 
-    int warmup_iters = 1000;
-    int timed_iters = 2000;
+    int warmup_iters = 10;
+    int timed_iters = 20;
 
 
     // warmup

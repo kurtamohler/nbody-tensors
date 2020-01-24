@@ -1,6 +1,8 @@
 import torch
 import copy
 
+torch.no_grad()
+
 class AccelCalculator:
     def __init__(self, planets, positions, dtype=torch.float64):
         self.positions = positions
@@ -20,15 +22,13 @@ class AccelCalculator:
     def __call__(self, positions=None):
         if positions is None:
             positions = self.positions
-        pos_matrix = positions.expand(self.num_planets, self.num_planets, 3)
 
-        dist_matrix = pos_matrix - pos_matrix.transpose(0, 1)
+        dist_matrix = -positions.reshape(self.num_planets, 1, 3) + positions
 
-        dist_magnitude = (dist_matrix*dist_matrix).sum(dim=2, keepdim=True).sqrt() + self.inf_diagonal
-
-        dist_matrix /= dist_magnitude
-
-        acceleration_components = self.gm_matrix / (dist_magnitude * dist_magnitude) * dist_matrix
+        dist_magnitude_squ = (dist_matrix*dist_matrix).sum(dim=2, keepdim=True) + self.inf_diagonal
+        dist_magnitude = dist_magnitude_squ.sqrt()
+        dist_matrix.div_(dist_magnitude)
+        acceleration_components = (self.gm_matrix / dist_magnitude_squ) * dist_matrix
 
         accelerations = acceleration_components.sum(dim=1)
 
@@ -59,8 +59,6 @@ class Universe:
             for other_idx, other in enumerate(self.planets):
                 if planet_idx != other_idx:
                     acceleration += planet.calc_accel(other)
-
-            # acceleration[2] = 0
 
             accelerations.append(
                 acceleration

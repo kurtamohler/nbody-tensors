@@ -95,7 +95,7 @@ print('Result with 8 actual planets:')
 print(universe.calc_accelerations())
 
 
-for i in range(100):
+for i in range(1000):
     planets.append(Body(
         'random_planet',
         torch.rand(3, dtype=dtype),
@@ -107,8 +107,8 @@ for i in range(100):
 # accel_calc = AccelCalculator(planets, dtype=dtype)
 universe = Universe(planets)
 
-warmup_iters = 1000
-timed_iters = 2000
+warmup_iters = 10
+timed_iters = 20
 
 for i in range(warmup_iters):
     universe.calc_accelerations()
