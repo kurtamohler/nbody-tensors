@@ -266,7 +266,7 @@ int main() {
     Universe universe(planets);
 
 
-
+    // Measure performance of Universe::calc_accelerations()
     Timer timer;
 
     int warmup_iters = 1000;

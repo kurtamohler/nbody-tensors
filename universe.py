@@ -1,65 +1,50 @@
 import torch
 import copy
 
+class AccelCalculator:
+    def __init__(self, planets, positions, dtype=torch.float64):
+        self.positions = positions
+        self.gm_matrix = torch.tensor([[planet.G_mass] for planet in planets], dtype=dtype)
+
+        self.num_planets = positions.size(0)
+
+        # inf_diagonal will be used to fix the divide-by-zero problem the arrises when
+        # calculating a planet's acceleration due to its own gravity. It should
+        # be 0 in those cases, but with Newton's formula, we would get infinity
+        # since a planet's distance to itself is 0. So we add # infinity to the
+        # denominator of the calculations so that we get GM/inf = 0
+        self.inf_diagonal = torch.zeros([self.num_planets, self.num_planets, 1], dtype=dtype)
+        for i in range(self.num_planets):
+            self.inf_diagonal[i][i][0] = float('inf')
+
+    def __call__(self, positions=None):
+        if positions is None:
+            positions = self.positions
+        pos_matrix = positions.expand(self.num_planets, self.num_planets, 3)
+
+        dist_matrix = pos_matrix - pos_matrix.transpose(0, 1)
+
+        dist_magnitude = (dist_matrix*dist_matrix).sum(dim=2, keepdim=True).sqrt() + self.inf_diagonal
+
+        dist_matrix /= dist_magnitude
+
+        acceleration_components = self.gm_matrix / (dist_magnitude * dist_magnitude) * dist_matrix
+
+        accelerations = acceleration_components.sum(dim=1)
+
+        return accelerations
 
 class Universe:
     def __init__(self, planets):
         self.planets = copy.deepcopy(planets)
         self.num_planets = len(planets)
         self.num_dims = len(planets[0].position)
-
-        # This will be used to fix the divide-by-zero problem the arrises when
-        # calculating a planet's acceleration due to its own gravity. It should
-        # be 0 in those cases, but with Newton's formula, we would get infinity
-        # since a planet's distance to itself is 0. So we add # infinity to the
-        # denominator of the calculations so that we get GM/inf = 0
-        self.inf_diagonal = torch.zeros([len(planets), len(planets), 1], dtype=planets[0].dtype)
-        for i in range(len(planets)):
-            self.inf_diagonal[i][i][0] = float('inf')
-
-        self.gm_matrix = torch.tensor([[planet.G_mass] for planet in planets])
         self.positions = torch.stack([planet.position for planet in planets])
-        # self.pos_matrix = self.positions.expand(self.num_planets, self.num_planets, self.num_dims)
         self.velocities = torch.stack([planet.velocity for planet in planets])
 
-        # Some integrators expect to have an existing accelerations matrix
+        self.calc_accelerations = AccelCalculator(planets, self.positions, dtype=torch.float64)
         self.accelerations = self.calc_accelerations()
 
-    # Calculate accelerations on all planets in the universe.
-    # The calculations are performed as combined tensor operations in PyTorch,
-    # rather than performing python loops over all the planet pairs. This allows
-    # us to attain significantly higher performance because the loops and
-    # math are offloaded to compiled C++ code, and because PyTorch Tensors are
-    # arranged optimally in memory
-    def calc_accelerations(self, positions=None):
-        if positions is None:
-            positions = self.positions
-
-        pos_matrix = positions.expand(self.num_planets, self.num_planets, self.num_dims)
-
-        dist_matrix = pos_matrix - pos_matrix.transpose(0, 1)
-
-        # thought: it could end up being more accurate to avoid reducing
-        # accel_components, and use it to accumulate the velocity components
-        # due to each individual interaction
-
-        dist_magnitude = dist_matrix.norm(dim=2, keepdim=True) + self.inf_diagonal
-        # dist_direction = dist_matrix / dist_magnitude
-        dist_matrix /= dist_magnitude
-
-        # denom = 1 / dist_magnitude
-        # denom *= denom
-
-        # acceleration_components = self.gm_matrix / (dist_magnitude * dist_magnitude) * dist_direction
-        # acceleration_components = self.gm_matrix * denom * dist_matrix
-
-        acceleration_components = self.gm_matrix / (dist_magnitude * dist_magnitude) * dist_matrix
-
-        # acceleration_components = self.gm_matrix
-
-        accelerations = acceleration_components.sum(dim=1)
-
-        return accelerations
 
     # Naive implementation of universal acceleration calculation.
     # This is only meant to be a double-checking mechanism to verify

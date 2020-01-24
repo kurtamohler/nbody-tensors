@@ -105,14 +105,15 @@ planets = [
     saturn,
 ]
 
-for i in range(100):
-    planets.append(Body(
-        'random_planet',
-        torch.rand(3),
-        torch.rand(3),
-        torch.rand(1),
-        (255,255,155)
-    ))
+# for i in range(100):
+#     planets.append(Body(
+#         'random_planet',
+#         torch.rand(3, dtype=torch.float64),
+#         torch.rand(3, dtype=torch.float64),
+#         torch.rand(1, dtype=torch.float64),
+#         (255,255,155)
+#     ))
+
 
 universe = Universe(planets)
 
@@ -125,37 +126,6 @@ universe = Universe(planets)
 #     exit(1)
 
 
-def compare_acceleration_calc_performance(universe):
-    times = []
-
-    for calc_method in [universe.calc_accelerations, universe.calc_accelerations_no_matrix]:
-    # for calc_method in ['universe.calc_accelerations()']:
-        warmup_iters = 10000
-        timed_iters = 20000
-
-        for i in range(warmup_iters):
-            calc_method()
-
-        start_time = time.time()
-        for i in range(timed_iters):
-            calc_method()
-        total_time = time.time() - start_time
-
-        time_per_iter = total_time / timed_iters
-
-        times.append(time_per_iter)
-
-        print(calc_method)
-        print('time per iter: %e s' % time_per_iter)
-        print('iters per second: %f fps' % (1/time_per_iter))
-        print()
-
-
-    print('speedup: %f' % (times[1] / times[0]))
-
-print(universe.calc_accelerations())
-
-compare_acceleration_calc_performance(universe)
 
 # exit()
 import pygame
@@ -194,7 +164,8 @@ planet_disp_paths_array = pygame.PixelArray(planet_disp_paths_surface)
 # time_step = 86400/(101 + 0.01 + 0.001)
 # time_step = 86400/(101 + 0.01 + 0.001) # + 0.001)
 # time_step = 8640/2
-time_step = 512
+# time_step = 512
+time_step = 10000
 
 def translate(value, leftMin, leftMax, rightMin, rightMax):
     # Figure out how wide each range is
@@ -222,7 +193,8 @@ disp_radius = 1.5e9
 # disp_radius = .3e6
 
 # Keep the center on a specific planet
-center_pos = universe.positions[2]
+center_pos = universe.positions[0]
+# center_pos = universe.positions[1]
 
 iterations = 0
 
@@ -283,7 +255,7 @@ while iterations < total_sim_steps:
         iterations += 1
 
 
-        if iterations % 100 == 0:
+        if iterations % 10 == 0:
             if True:
                 # Draw orbit paths
                 for planet_idx in range(universe.num_planets):
@@ -308,7 +280,7 @@ while iterations < total_sim_steps:
             y_disp = int(round(translate(y, -disp_radius, disp_radius, 0, screen_height)))
 
             if x_disp >= 0 and x_disp < screen_width and y_disp >= 0 and y_disp < screen_height:
-                pygame.draw.circle(screen, planets[planet_idx].color, (x_disp, y_disp), 3)
+                pygame.draw.circle(screen, planets[planet_idx].color, (x_disp, y_disp), 4)
 
         pygame.display.flip()
         last_draw_time = cur_time

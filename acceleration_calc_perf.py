@@ -1,49 +1,15 @@
+#!/usr/bin/env python3
 import torch
 from torch import nn
 import time
 import copy
 from body import Body
+from universe import Universe
 
 torch.set_num_threads(1)
 # torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 dtype = torch.float64
-
-class AccelCalculator:
-    def __init__(self, planets, dtype=torch.float64):
-        self.planets = copy.deepcopy(planets)
-        self.positions = torch.stack([planet.position for planet in planets])
-        self.gm_matrix = torch.tensor([[planet.G_mass] for planet in planets], dtype=dtype)
-
-        self.num_planets = len(planets)
-
-        # inf_diagonal will be used to fix the divide-by-zero problem the arrises when
-        # calculating a planet's acceleration due to its own gravity. It should
-        # be 0 in those cases, but with Newton's formula, we would get infinity
-        # since a planet's distance to itself is 0. So we add # infinity to the
-        # denominator of the calculations so that we get GM/inf = 0
-        self.inf_diagonal = torch.zeros([len(planets), len(planets), 1], dtype=dtype)
-        for i in range(len(planets)):
-            self.inf_diagonal[i][i][0] = float('inf')
-
-    def __call__(self):
-        pos_matrix = self.positions.expand(self.num_planets, self.num_planets, 3)
-
-        dist_matrix = pos_matrix - pos_matrix.transpose(0, 1)
-
-        dist_magnitude = (dist_matrix*dist_matrix).sum(dim=2, keepdim=True).sqrt() + self.inf_diagonal
-
-        # Calculating magnitudes with the above line is much faster than the builtin norm() method
-        # dist_magnitude = dist_matrix.norm(p='fro', dim=2, keepdim=True) + self.inf_diagonal
-
-        dist_matrix /= dist_magnitude
-
-        acceleration_components = self.gm_matrix / (dist_magnitude * dist_magnitude) * dist_matrix
-
-        accelerations = acceleration_components.sum(dim=1)
-
-        return accelerations
-
 
 sun = Body(
     'Sun',
@@ -122,9 +88,11 @@ planets = [
 
 # would be nice if i could jit it, but norm() prevents that
 # accel_calc = torch.jit.script(AccelCalculator())
-accel_calc = AccelCalculator(planets, dtype=dtype)
+# accel_calc = AccelCalculator(planets, dtype=dtype)
+universe = Universe(planets)
+# accel_calc = AccelCalculator(planets, dtype=dtype)
 print('Result with 8 actual planets:')
-print(accel_calc())
+print(universe.calc_accelerations())
 
 
 for i in range(100):
@@ -136,17 +104,18 @@ for i in range(100):
         (255,255,155)
     ))
 
-accel_calc = AccelCalculator(planets, dtype=dtype)
+# accel_calc = AccelCalculator(planets, dtype=dtype)
+universe = Universe(planets)
 
 warmup_iters = 1000
 timed_iters = 2000
 
 for i in range(warmup_iters):
-    accel_calc()
+    universe.calc_accelerations()
 
 start_time = time.time()
 for i in range(timed_iters):
-    accel_calc()
+    universe.calc_accelerations()
 total_time = time.time() - start_time
 
 time_per_iter = total_time / timed_iters
