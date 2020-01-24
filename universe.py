@@ -27,8 +27,8 @@ class AccelCalculator:
 
         dist_magnitude_squ = (dist_matrix*dist_matrix).sum(dim=2, keepdim=True) + self.inf_diagonal
         dist_magnitude = dist_magnitude_squ.sqrt()
-        dist_matrix.div_(dist_magnitude)
-        acceleration_components = (self.gm_matrix / dist_magnitude_squ) * dist_matrix
+        dist_direction_matrix = dist_matrix.div_(dist_magnitude)
+        acceleration_components = (self.gm_matrix / dist_magnitude_squ) * dist_direction_matrix
 
         accelerations = acceleration_components.sum(dim=1)
 
